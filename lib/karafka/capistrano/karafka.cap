@@ -6,6 +6,8 @@ namespace :load do
     set :karafka_default_hooks, -> { true }
     set :karafka_env, -> { fetch(:karafka_env, fetch(:environment)) }
     set :karafka_pid, -> { File.join(shared_path, 'tmp', 'pids', 'karafka.pid') }
+    set :karafka_sidekiq_pid, -> { File.join(shared_path, 'tmp', 'pids', 'sidekiq.pid') }
+    set :karafka_sidekiq_log_file, -> { File.join(shared_path, 'log', 'sidekiq.log') }
   end
 end
 
@@ -16,12 +18,46 @@ namespace :deploy do
 end
 
 namespace :karafka do
+  namespace :sidekiq do
+    desc 'Stop sidekiq'
+    task :stop do
+      on roles(fetch(:karafka_role)) do |host|
+        within shared_path do
+          # If there's no pidfile it means that Karafka is not running
+          #next unless test "cat #{fetch(:karafka_pid)}"
+          next unless test "[ -f #{fetch(:karafka_sidekiq_pid)} ]"
+
+          # Send a kill signal to a given process
+          execute "kill -INT `cat #{fetch(:karafka_sidekiq_pid)}`"
+        end
+      end
+    end
+
+    desc 'Start sidekiq'
+    task :start do
+      on roles(fetch(:karafka_role)) do |host|
+        within current_path do
+          # We use all 3 because when combined with Sinatra/Rails it will use their parts as well
+          # so we want to set proper env for any of them
+          with(
+            KARAFKA_ENV: fetch(:karafka_env),
+            RAILS_ENV: fetch(:rails_env),
+            RACK_ENV: fetch(:rack_env)
+          )do
+            execute :bundle, "exec karafka worker -d -p #{fetch(:karafka_sidekiq_pid)} -L #{fetch(:karafka_sidekiq_log_file)}"
+          end
+        end
+      end
+    end
+  end
+
   desc 'Stop Karafka'
   task :stop do
     on roles(fetch(:karafka_role)) do |host|
       within shared_path do
         # If there's no pidfile it means that Karafka is not running
-        next unless test "cat #{fetch(:karafka_pid)}"
+        #next unless test "cat #{fetch(:karafka_pid)}"
+        next unless test "[ -f #{fetch(:karafka_pid)} ]"
 
         # Send a kill signal to a given process
         execute "kill -INT `cat #{fetch(:karafka_pid)}`"
@@ -59,7 +95,9 @@ namespace :karafka do
   desc 'Restart Karafka'
   task :restart do
     invoke 'karafka:stop'
+    invoke 'karafka:sidekiq:stop'
     invoke 'karafka:start'
+    invoke 'karafka:sidekiq:start'
   end
 
   desc 'Status Karafka'

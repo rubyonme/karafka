@@ -44,7 +44,7 @@ namespace :karafka do
             RAILS_ENV: fetch(:rails_env),
             RACK_ENV: fetch(:rack_env)
           )do
-            execute :bundle, "exec karafka worker -d -p #{fetch(:karafka_sidekiq_pid)} -L #{fetch(:karafka_sidekiq_log_file)}"
+            execute :bundle, "exec karafka worker -d -p #{fetch(:karafka_sidekiq_pid)} -L #{fetch(:karafka_sidekiq_log_file)} -g #{fetch(:application)}"
           end
         end
       end
